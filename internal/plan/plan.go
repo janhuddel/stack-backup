@@ -87,11 +87,11 @@ func buildOne(ct docker.Container, prefix string, allTargets []string) (Containe
 			if slices.Contains(allTargets, name) {
 				p.Targets = append(p.Targets, name)
 			} else {
-				warnings = append(warnings, fmt.Sprintf("container %s: unbekanntes Target %q ignoriert", ct.Name, name))
+				warnings = append(warnings, fmt.Sprintf("container %s: ignoring unknown target %q", ct.Name, name))
 			}
 		}
 		if len(p.Targets) == 0 {
-			warnings = append(warnings, fmt.Sprintf("container %s: kein gültiges Target übrig, Container übersprungen", ct.Name))
+			warnings = append(warnings, fmt.Sprintf("container %s: no valid target left, container skipped", ct.Name))
 			return ContainerPlan{}, warnings
 		}
 	} else {
@@ -104,10 +104,10 @@ func buildOne(ct docker.Container, prefix string, allTargets []string) (Containe
 	cmd := label("exec.command")
 	if script := label("exec.script"); script != "" {
 		if cmd != "" {
-			warnings = append(warnings, fmt.Sprintf("container %s: exec.command und exec.script gesetzt — exec.script gewinnt", ct.Name))
+			warnings = append(warnings, fmt.Sprintf("container %s: both exec.command and exec.script set, exec.script wins", ct.Name))
 		}
 		if strings.ContainsAny(script, " \t\"'`;&|$(){}") {
-			warnings = append(warnings, fmt.Sprintf("container %s: exec.script %q enthält Shell-Sonderzeichen — erwartet wird ein reiner Pfad, für Kommandozeilen exec.command verwenden", ct.Name, script))
+			warnings = append(warnings, fmt.Sprintf("container %s: exec.script %q contains shell metacharacters, expected a plain path; use exec.command for command lines", ct.Name, script))
 		}
 		cmd = "sh " + script
 	}
@@ -125,7 +125,7 @@ func buildOne(ct docker.Container, prefix string, allTargets []string) (Containe
 	}
 
 	if !p.HasWork() {
-		warnings = append(warnings, fmt.Sprintf("container %s: enable=true, aber weder exec.command/exec.script noch volumes gesetzt", ct.Name))
+		warnings = append(warnings, fmt.Sprintf("container %s: enable=true but neither exec.command/exec.script nor volumes set", ct.Name))
 	}
 	return p, warnings
 }
@@ -153,7 +153,7 @@ func selectMounts(ct docker.Container, raw, prefix string, warnings *[]string) [
 			appendMount(m)
 		}
 		if len(jobs) == 0 {
-			*warnings = append(*warnings, fmt.Sprintf("container %s: volumes=all, aber keine Mounts gefunden", ct.Name))
+			*warnings = append(*warnings, fmt.Sprintf("container %s: volumes=all but no mounts found", ct.Name))
 		}
 		return jobs
 	}
@@ -163,7 +163,7 @@ func selectMounts(ct docker.Container, raw, prefix string, warnings *[]string) [
 			return m.Destination == sel || (m.VolumeName != "" && m.VolumeName == sel)
 		})
 		if idx < 0 {
-			*warnings = append(*warnings, fmt.Sprintf("container %s: kein Mount passt zu %q", ct.Name, sel))
+			*warnings = append(*warnings, fmt.Sprintf("container %s: no mount matches %q", ct.Name, sel))
 			continue
 		}
 		appendMount(ct.Mounts[idx])

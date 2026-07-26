@@ -36,12 +36,12 @@ func New(cfg *config.Config, dc *docker.Client, log *slog.Logger) *Runner {
 // TryRun führt eine Iteration aus, sofern keine andere läuft.
 func (r *Runner) TryRun(ctx context.Context) {
 	if !r.mu.TryLock() {
-		r.Log.Warn("vorherige Iteration läuft noch, überspringe diesen Lauf")
+		r.Log.Warn("previous iteration still running, skipping this run")
 		return
 	}
 	defer r.mu.Unlock()
 	if err := r.run(ctx); err != nil {
-		r.Log.Error("Backup-Iteration mit Fehlern beendet", "error", err)
+		r.Log.Error("backup iteration finished with errors", "error", err)
 	}
 }
 
@@ -53,7 +53,7 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 }
 
 func (r *Runner) run(ctx context.Context) error {
-	r.Log.Info("Backup-Iteration gestartet")
+	r.Log.Info("backup iteration started")
 
 	containers, skipped, err := r.Docker.ListBackupContainers(ctx, r.Cfg.LabelPrefix)
 	if err != nil {
@@ -63,13 +63,13 @@ func (r *Runner) run(ctx context.Context) error {
 	for _, s := range skipped {
 		if s.HasConfigLabels {
 			// Backup-Labels vorhanden, aber enable != true — vermutlich vergessen.
-			r.Log.Warn("Container hat Backup-Labels, aber kein enable=true — übersprungen", "container", s.Name)
+			r.Log.Warn("container has backup labels but no enable=true, skipped", "container", s.Name)
 		} else {
 			ignoredNames = append(ignoredNames, s.Name)
 		}
 	}
 	if len(ignoredNames) > 0 {
-		r.Log.Info("Container ohne Backup-Label ignoriert", "count", len(ignoredNames), "container", strings.Join(ignoredNames, ", "))
+		r.Log.Info("ignoring containers without backup label", "count", len(ignoredNames), "container", strings.Join(ignoredNames, ", "))
 	}
 
 	plans, warnings := plan.Build(containers, r.Cfg.LabelPrefix, r.Cfg.TargetNames())
@@ -77,7 +77,7 @@ func (r *Runner) run(ctx context.Context) error {
 		r.Log.Warn(w)
 	}
 	if len(plans) == 0 {
-		r.Log.Info("keine Container mit Backup-Konfiguration gefunden")
+		r.Log.Info("no containers with backup configuration found")
 		return nil
 	}
 
@@ -101,12 +101,12 @@ func (r *Runner) run(ctx context.Context) error {
 		if *r.Cfg.RequireHealthy {
 			status, err := r.Docker.Health(ctx, p.ContainerID)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("container %s: health-status: %w", p.ContainerName, err))
+				errs = append(errs, fmt.Errorf("container %s: health status: %w", p.ContainerName, err))
 				failed++
 				continue
 			}
 			if !docker.HealthOK(status) {
-				r.Log.Warn("Container nicht healthy — Backup übersprungen", "container", p.ContainerName, "health", status)
+				r.Log.Warn("container not healthy, backup skipped", "container", p.ContainerName, "health", status)
 				unhealthy++
 				continue
 			}
@@ -130,7 +130,7 @@ func (r *Runner) run(ctx context.Context) error {
 		}
 	}
 
-	r.Log.Info("Backup-Iteration beendet", "container_ok", ok, "container_failed", failed, "container_unhealthy", unhealthy)
+	r.Log.Info("backup iteration finished", "container_ok", ok, "container_failed", failed, "container_unhealthy", unhealthy)
 	return errors.Join(errs...)
 }
 
@@ -146,9 +146,9 @@ func (r *Runner) runContainer(ctx context.Context, p plan.ContainerPlan, clients
 			if !ready {
 				continue
 			}
-			log.Info("exec-Backup", "target", target, "filename", p.Exec.Filename)
+			log.Info("running exec backup", "target", target, "filename", p.Exec.Filename)
 			if err := r.execBackup(ctx, p, rc); err != nil {
-				errs = append(errs, fmt.Errorf("exec-backup (target %s): %w", target, err))
+				errs = append(errs, fmt.Errorf("exec backup (target %s): %w", target, err))
 			}
 		}
 	}
@@ -187,7 +187,7 @@ func (r *Runner) execBackup(ctx context.Context, p plan.ContainerPlan, rc *resti
 // ausgeführt — unabhängig von der Anzahl Mounts und Targets.
 func (r *Runner) mountBackups(ctx context.Context, p plan.ContainerPlan, clients map[string]*restic.Client, log *slog.Logger) (err error) {
 	if p.PreCommand != "" {
-		log.Info("pre-command", "command", p.PreCommand)
+		log.Info("running pre-command", "command", p.PreCommand)
 		logWriter := newLogWriter(log.With("stream", "pre-command"))
 		if preErr := r.Docker.Exec(ctx, p.ContainerID, p.PreCommand, logWriter, logWriter); preErr != nil {
 			return fmt.Errorf("pre-command: %w", preErr)
@@ -197,7 +197,7 @@ func (r *Runner) mountBackups(ctx context.Context, p plan.ContainerPlan, clients
 	if p.PostCommand != "" {
 		// Post-Hook läuft garantiert, auch wenn Backups fehlschlagen.
 		defer func() {
-			log.Info("post-command", "command", p.PostCommand)
+			log.Info("running post-command", "command", p.PostCommand)
 			logWriter := newLogWriter(log.With("stream", "post-command"))
 			if postErr := r.Docker.Exec(ctx, p.ContainerID, p.PostCommand, logWriter, logWriter); postErr != nil {
 				err = errors.Join(err, fmt.Errorf("post-command: %w", postErr))
@@ -207,15 +207,15 @@ func (r *Runner) mountBackups(ctx context.Context, p plan.ContainerPlan, clients
 	}
 
 	if p.Stop {
-		log.Info("stoppe Container für konsistentes Backup")
+		log.Info("stopping container for consistent backup")
 		if stopErr := r.Docker.Stop(ctx, p.ContainerID, r.Cfg.StopTimeout); stopErr != nil {
-			return fmt.Errorf("container stoppen: %w", stopErr)
+			return fmt.Errorf("stop container: %w", stopErr)
 		}
 		// Neustart garantiert — auch bei Fehlern oder Panic während des Backups.
 		defer func() {
-			log.Info("starte Container wieder")
+			log.Info("restarting container")
 			if startErr := r.Docker.Start(ctx, p.ContainerID); startErr != nil {
-				err = errors.Join(err, fmt.Errorf("container starten: %w", startErr))
+				err = errors.Join(err, fmt.Errorf("start container: %w", startErr))
 			}
 		}()
 	}
@@ -223,7 +223,7 @@ func (r *Runner) mountBackups(ctx context.Context, p plan.ContainerPlan, clients
 	var errs []error
 	for _, m := range p.Mounts {
 		if _, statErr := os.Stat(m.Source); statErr != nil {
-			errs = append(errs, fmt.Errorf("mount %s: Quellpfad %s nicht im Backup-Container verfügbar (Volume-Root mounten!): %w",
+			errs = append(errs, fmt.Errorf("mount %s: source path %s not available in backup container (mount the volume root!): %w",
 				m.Destination, m.Source, statErr))
 			continue
 		}
@@ -233,7 +233,7 @@ func (r *Runner) mountBackups(ctx context.Context, p plan.ContainerPlan, clients
 			if !ready {
 				continue
 			}
-			log.Info("mount-Backup", "target", target, "mount", m.Destination, "source", m.Source)
+			log.Info("running mount backup", "target", target, "mount", m.Destination, "source", m.Source)
 			if backupErr := rc.Backup(ctx, m.Source, tags, m.Excludes); backupErr != nil {
 				errs = append(errs, fmt.Errorf("mount %s (target %s): %w", m.Destination, target, backupErr))
 			}

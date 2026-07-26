@@ -99,11 +99,11 @@ func (c *Config) TargetNames() []string {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config lesen: %w", err)
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("config parsen: %w", err)
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -127,17 +127,17 @@ func (c *Config) applyDefaults() {
 
 func (c *Config) validate() error {
 	if c.Schedule == "" {
-		return fmt.Errorf("config: schedule fehlt")
+		return fmt.Errorf("config: schedule missing")
 	}
 	if len(c.Targets) == 0 {
-		return fmt.Errorf("config: mindestens ein Target erforderlich")
+		return fmt.Errorf("config: at least one target required")
 	}
 	for name, t := range c.Targets {
 		if t.Repository == "" {
-			return fmt.Errorf("config: target %q ohne repository", name)
+			return fmt.Errorf("config: target %q has no repository", name)
 		}
 		if t.Password == "" && t.PasswordFile == "" && t.Env["RESTIC_PASSWORD"] == "" && t.Env["RESTIC_PASSWORD_FILE"] == "" {
-			return fmt.Errorf("config: target %q ohne password/password_file", name)
+			return fmt.Errorf("config: target %q has no password/password_file", name)
 		}
 	}
 	return nil

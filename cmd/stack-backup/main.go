@@ -33,7 +33,7 @@ const defaultConfigPath = "/etc/stack-backup/config.yml"
 func main() {
 	log := newLogger()
 	if err := run(log); err != nil {
-		log.Error("abbruch", "error", err)
+		log.Error("aborting after error", "error", err)
 		os.Exit(1)
 	}
 }
@@ -73,9 +73,9 @@ func run(log *slog.Logger) error {
 	}
 	defer dc.Close()
 	if selfID := dc.SelfID(); selfID != "" {
-		log.Debug("eigener Container erkannt, wird von der Discovery ausgeschlossen", "id", selfID)
+		log.Debug("own container detected, excluding it from discovery", "id", selfID)
 	} else {
-		log.Debug("eigene Container-ID nicht ermittelbar — Selbstausschluss inaktiv")
+		log.Debug("own container ID not detectable, self-exclusion disabled")
 	}
 
 	r := runner.New(cfg, dc, log)
@@ -86,7 +86,7 @@ func run(log *slog.Logger) error {
 
 	c := cron.New()
 	if _, err := c.AddFunc(cfg.Schedule, func() { r.TryRun(ctx) }); err != nil {
-		return fmt.Errorf("ungültiger schedule %q: %w", cfg.Schedule, err)
+		return fmt.Errorf("invalid schedule %q: %w", cfg.Schedule, err)
 	}
 
 	// Manueller Trigger: SIGUSR1 stößt sofort eine Iteration an
@@ -95,16 +95,16 @@ func run(log *slog.Logger) error {
 	trigger := make(chan os.Signal, 1)
 	signal.Notify(trigger, syscall.SIGUSR1)
 
-	log.Info("stack-backup gestartet", "schedule", cfg.Schedule, "targets", cfg.TargetNames())
+	log.Info("stack-backup started", "schedule", cfg.Schedule, "targets", cfg.TargetNames())
 	c.Start()
 
 	for {
 		select {
 		case <-trigger:
-			log.Info("SIGUSR1 empfangen, starte Backup-Iteration")
+			log.Info("received SIGUSR1, starting backup iteration")
 			r.TryRun(ctx)
 		case <-ctx.Done():
-			log.Info("beende, warte auf laufende Jobs")
+			log.Info("shutting down, waiting for running jobs")
 			<-c.Stop().Done()
 			return nil
 		}
@@ -121,11 +121,11 @@ func runResticPassthrough(ctx context.Context, args []string, log *slog.Logger) 
 		return err
 	}
 	if *targetName == "" {
-		return fmt.Errorf("restic-passthrough: --target fehlt")
+		return fmt.Errorf("restic passthrough: --target missing")
 	}
 	resticArgs := flags.Args()
 	if len(resticArgs) == 0 {
-		return fmt.Errorf("restic-passthrough: keine restic-Argumente angegeben")
+		return fmt.Errorf("restic passthrough: no restic arguments given")
 	}
 
 	cfg, err := config.Load(*configPath)
@@ -134,7 +134,7 @@ func runResticPassthrough(ctx context.Context, args []string, log *slog.Logger) 
 	}
 	target, ok := cfg.Targets[*targetName]
 	if !ok {
-		return fmt.Errorf("restic-passthrough: unbekanntes Target %q (verfügbar: %s)",
+		return fmt.Errorf("restic passthrough: unknown target %q (available: %s)",
 			*targetName, strings.Join(cfg.TargetNames(), ", "))
 	}
 	return restic.New(*targetName, target, log).Passthrough(ctx, resticArgs)

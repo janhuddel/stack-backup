@@ -50,7 +50,7 @@ func (c *Client) EnsureInit(ctx context.Context) error {
 	if err := c.run(ctx, "cat", "config"); err == nil {
 		return nil
 	}
-	c.Log.Info("initialisiere restic-Repository", "repository", c.Target.Repository)
+	c.Log.Info("initializing restic repository", "repository", c.Target.Repository)
 	return c.run(ctx, "init")
 }
 
@@ -100,7 +100,7 @@ func (c *Client) BackupStdin(ctx context.Context, filename string, tags []string
 func (c *Client) Forget(ctx context.Context) error {
 	policy := c.Target.Retention
 	if policy.IsZero() {
-		c.Log.Warn("keine Retention konfiguriert, forget übersprungen")
+		c.Log.Warn("no retention configured, skipping forget")
 		return nil
 	}
 	args := append([]string{"forget", "--prune", "--group-by", "tags,paths"}, policy.Flags()...)

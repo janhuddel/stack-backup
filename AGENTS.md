@@ -13,7 +13,11 @@ Fachliche Details und Label-Referenz: [README.md](README.md).
 
 ## Sprache & Stil
 
-- Kommentare, Log-Meldungen, Doku und Commit-Messages sind **deutsch** — dabei bleiben.
+- Kommentare, Doku und Commit-Messages sind **deutsch** — dabei bleiben.
+- **Log- und Fehlermeldungen dagegen englisch**: klein beginnend, kurze Sätze mit
+  Leerzeichen (dann quotet slog die msg einheitlich), laufende Aktionen im
+  Verlaufsform-Stil (`stopping container …`), Ereignisse deklarativ
+  (`backup iteration finished`). Kein Gedankenstrich in Meldungen, Kommata nutzen.
 - Bezeichner dagegen **englisch**: Variablen, Funktionen, Felder, Label-Namen. Gilt auch
   für Shell-Skripte in Vorschlägen (`archive=…`, nicht `archiv=…`).
 - Logging über `log/slog` (strukturiert, stdout). Fehler werden pro Job gesammelt

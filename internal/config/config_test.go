@@ -93,19 +93,19 @@ func TestRetentionFlags(t *testing.T) {
 
 func TestLoadRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"schedule fehlt": `
+		"schedule missing": `
 targets:
   local: {repository: /r, password: x}
 `,
-		"mindestens ein Target": `
+		"at least one target": `
 schedule: "0 3 * * *"
 `,
-		"ohne repository": `
+		"has no repository": `
 schedule: "0 3 * * *"
 targets:
   local: {password: x}
 `,
-		"ohne password": `
+		"has no password": `
 schedule: "0 3 * * *"
 targets:
   local: {repository: /r}

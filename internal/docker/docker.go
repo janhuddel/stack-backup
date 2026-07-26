@@ -74,7 +74,7 @@ type Client struct {
 func NewClient() (*Client, error) {
 	api, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		return nil, fmt.Errorf("docker-client: %w", err)
+		return nil, fmt.Errorf("docker client: %w", err)
 	}
 	return &Client{api: api, selfID: selfContainerID()}, nil
 }
@@ -91,7 +91,7 @@ func (c *Client) Close() error { return c.api.Close() }
 func (c *Client) ListBackupContainers(ctx context.Context, labelPrefix string) ([]Container, []Skipped, error) {
 	list, err := c.api.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("container listen: %w", err)
+		return nil, nil, fmt.Errorf("list containers: %w", err)
 	}
 
 	result := make([]Container, 0, len(list))
@@ -120,7 +120,7 @@ func (c *Client) ListBackupContainers(ctx context.Context, labelPrefix string) (
 		// Host-Pfade. Auf nativem Docker sind beide identisch.
 		inspect, err := c.api.ContainerInspect(ctx, item.ID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("container %s inspizieren: %w", containerName(item.Names, item.ID), err)
+			return nil, nil, fmt.Errorf("inspect container %s: %w", containerName(item.Names, item.ID), err)
 		}
 		for _, m := range inspect.Mounts {
 			switch m.Type {
@@ -161,7 +161,7 @@ func containerName(names []string, id string) string {
 func (c *Client) Health(ctx context.Context, containerID string) (string, error) {
 	inspect, err := c.api.ContainerInspect(ctx, containerID)
 	if err != nil {
-		return "", fmt.Errorf("container inspizieren: %w", err)
+		return "", fmt.Errorf("inspect container: %w", err)
 	}
 	if inspect.State == nil || inspect.State.Health == nil {
 		return "", nil
@@ -179,12 +179,12 @@ func (c *Client) Exec(ctx context.Context, containerID, command string, stdout, 
 		AttachStderr: true,
 	})
 	if err != nil {
-		return fmt.Errorf("exec anlegen: %w", err)
+		return fmt.Errorf("create exec: %w", err)
 	}
 
 	resp, err := c.api.ContainerExecAttach(ctx, exec.ID, container.ExecAttachOptions{})
 	if err != nil {
-		return fmt.Errorf("exec attach: %w", err)
+		return fmt.Errorf("attach exec: %w", err)
 	}
 	defer resp.Close()
 
@@ -195,12 +195,12 @@ func (c *Client) Exec(ctx context.Context, containerID, command string, stdout, 
 		stderr = io.Discard
 	}
 	if _, err := stdcopy.StdCopy(stdout, stderr, resp.Reader); err != nil {
-		return fmt.Errorf("exec stream: %w", err)
+		return fmt.Errorf("stream exec output: %w", err)
 	}
 
 	inspect, err := c.api.ContainerExecInspect(ctx, exec.ID)
 	if err != nil {
-		return fmt.Errorf("exec inspect: %w", err)
+		return fmt.Errorf("inspect exec: %w", err)
 	}
 	if inspect.ExitCode != 0 {
 		return fmt.Errorf("exec %q: exit code %d", command, inspect.ExitCode)

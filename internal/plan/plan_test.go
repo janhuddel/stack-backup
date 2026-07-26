@@ -83,7 +83,7 @@ func TestExecScriptWinsOverCommand(t *testing.T) {
 		),
 	}
 	plans, warnings := Build([]docker.Container{ct}, prefix, allTargets)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "exec.script gewinnt") {
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exec.script wins") {
 		t.Fatalf("erwartet Warnung zum Doppel-Label, bekommen %v", warnings)
 	}
 	if got := plans[0].Exec.Command; got != "sh /opt/backup-hooks/dump.sh" {
@@ -97,7 +97,7 @@ func TestExecScriptWithShellCharsWarns(t *testing.T) {
 		Labels: labels("exec.script", "/opt/dump.sh && rm -rf /"),
 	}
 	plans, warnings := Build([]docker.Container{ct}, prefix, allTargets)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "Shell-Sonderzeichen") {
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "shell metacharacters") {
 		t.Fatalf("erwartet Warnung zu Sonderzeichen, bekommen %v", warnings)
 	}
 	// Der Job läuft trotzdem — der Fehler wird spätestens im Exec-Log sichtbar.
