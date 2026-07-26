@@ -55,6 +55,12 @@ example-stack, dann das Skript.
 - **Quellpfad-Check vor Mount-Backups:** `os.Stat` — fehlt der pfadidentische
   ro-Mount des Volume-Roots, gibt es einen klaren Fehler statt eines leeren
   Snapshots.
+- **Selbstausschluss (best effort):** Der Backup-Container filtert sich selbst aus der
+  Discovery, damit er nicht im Skipped-Log auftaucht und sich nie selbst sichert oder
+  stoppt. Die eigene ID kommt aus `/proc/self/mountinfo`, ersatzweise
+  `/proc/self/cgroup`, zuletzt aus dem Hostname (= Kurz-ID, sofern nicht überschrieben).
+  Verglichen wird nur gegen Container-IDs, nie gegen Namen: ein gesetzter `hostname:`
+  deaktiviert höchstens den Ausschluss, er trifft nie den falschen Container.
 - **Container ohne Backup-Label** werden gesammelt als eine INFO-Zeile geloggt;
   Container mit `stack-backup.*`-Labels ohne `enable=true` einzeln als WARN.
 - **Cleanup per `defer`:** Container-Neustart (`stop=true`) und `post-command`

@@ -60,6 +60,8 @@ func classify(labels map[string]string, labelPrefix string) (enabled, hasConfig 
 // Client ist ein dünner Wrapper um den Docker-SDK-Client.
 type Client struct {
 	api *client.Client
+	// selfID ist die eigene Container-ID, sofern ermittelbar (siehe self.go).
+	selfID string
 }
 
 // NewClient verbindet sich anhand des Standard-Envs (DOCKER_HOST etc.).
@@ -68,8 +70,11 @@ func NewClient() (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("docker-client: %w", err)
 	}
-	return &Client{api: api}, nil
+	return &Client{api: api, selfID: selfContainerID()}, nil
 }
+
+// SelfID liefert die ermittelte eigene Container-ID ("" = nicht ermittelbar).
+func (c *Client) SelfID() string { return c.selfID }
 
 // Close gibt die Verbindung frei.
 func (c *Client) Close() error { return c.api.Close() }
@@ -86,6 +91,11 @@ func (c *Client) ListBackupContainers(ctx context.Context, labelPrefix string) (
 	result := make([]Container, 0, len(list))
 	var skipped []Skipped
 	for _, item := range list {
+		if isSelf(item.ID, c.selfID) {
+			// Der eigene Container ist nie Backup-Objekt — und taucht auch
+			// nicht als "ohne Backup-Label" im Log auf.
+			continue
+		}
 		enabled, hasConfig := classify(item.Labels, labelPrefix)
 		if !enabled {
 			skipped = append(skipped, Skipped{

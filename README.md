@@ -9,7 +9,10 @@ in beliebig viele restic-Repositories mit jeweils eigener Retention.
 
 Bei jedem Lauf (globaler Cron-Ausdruck in der Config):
 
-1. Alle laufenden Container mit `stack-backup.enable=true` werden ermittelt.
+1. Alle laufenden Container mit `stack-backup.enable=true` werden ermittelt. Der
+   Backup-Container selbst wird dabei erkannt und übersprungen — er sichert sich
+   nie selbst und taucht auch nicht in den Log-Meldungen über ignorierte
+   Container auf.
 2. Pro Container wird zuerst ein optionales **Exec-Backup** ausgeführt
    (Kommando im laufenden Container, z.B. `pg_dump`; stdout fließt direkt in
    `restic backup --stdin` — nichts wird zwischengespeichert).

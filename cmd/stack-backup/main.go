@@ -72,6 +72,11 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer dc.Close()
+	if selfID := dc.SelfID(); selfID != "" {
+		log.Debug("eigener Container erkannt, wird von der Discovery ausgeschlossen", "id", selfID)
+	} else {
+		log.Debug("eigene Container-ID nicht ermittelbar — Selbstausschluss inaktiv")
+	}
 
 	r := runner.New(cfg, dc, log)
 
