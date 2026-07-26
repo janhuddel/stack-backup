@@ -10,6 +10,11 @@ schedule: "0 3 * * *"
 # Timeout in Sekunden für "docker stop" bei stop=true (Default: 30).
 # stop_timeout_seconds: 30
 
+# Container mit Healthcheck nur sichern, wenn sie "healthy" melden; sonst wird
+# der Container mit Warnung übersprungen. Container ohne Healthcheck sind nicht
+# betroffen. (Default: true)
+# require_healthy: true
+
 targets:
   # Lokales Repository (Verzeichnis wird in den Backup-Container gemountet),
   # 30 Tage Historie.

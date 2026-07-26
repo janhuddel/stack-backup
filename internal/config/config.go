@@ -75,10 +75,14 @@ func (t Target) ResticEnv() []string {
 
 // Config ist die Gesamtkonfiguration aus der YAML-Datei.
 type Config struct {
-	Schedule    string            `yaml:"schedule"`
-	LabelPrefix string            `yaml:"label_prefix"`
-	StopTimeout int               `yaml:"stop_timeout_seconds"`
-	Targets     map[string]Target `yaml:"targets"`
+	Schedule    string `yaml:"schedule"`
+	LabelPrefix string `yaml:"label_prefix"`
+	StopTimeout int    `yaml:"stop_timeout_seconds"`
+	// RequireHealthy überspringt Container, deren Healthcheck beim Start des
+	// Backup-Versuchs nicht "healthy" meldet (Default: true). Container ohne
+	// definierten Healthcheck sind davon nicht betroffen.
+	RequireHealthy *bool             `yaml:"require_healthy"`
+	Targets        map[string]Target `yaml:"targets"`
 }
 
 // TargetNames liefert alle Target-Namen in stabiler Reihenfolge.
@@ -114,6 +118,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.StopTimeout <= 0 {
 		c.StopTimeout = 30
+	}
+	if c.RequireHealthy == nil {
+		t := true
+		c.RequireHealthy = &t
 	}
 }
 

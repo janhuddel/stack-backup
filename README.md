@@ -64,6 +64,16 @@ targets:
 Retention-Felder: `keep_last`, `keep_hourly`, `keep_daily`, `keep_weekly`,
 `keep_monthly`, `keep_yearly` — Mapping 1:1 auf `restic forget`.
 
+Weitere globale Optionen (alle optional):
+
+- `label_prefix` — Prefix der Container-/Volume-Labels (Default: `stack-backup`).
+- `stop_timeout_seconds` — Timeout für `docker stop` bei `stop=true` (Default: `30`).
+- `require_healthy` — Container mit Healthcheck werden nur gesichert, wenn sie
+  beim Start des Backup-Versuchs `healthy` melden; bei `starting`/`unhealthy`
+  wird der Container mit Warnung übersprungen (zählt nicht als Fehler).
+  Container ohne definierten Healthcheck werden immer gesichert.
+  `false` schaltet die Prüfung ab. (Default: `true`)
+
 ## Label-Referenz
 
 ### Container-Labels

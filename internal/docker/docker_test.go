@@ -24,3 +24,21 @@ func TestClassify(t *testing.T) {
 		}
 	}
 }
+
+func TestHealthOK(t *testing.T) {
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{"", true},     // kein Healthcheck definiert
+		{"none", true}, // dito, expliziter SDK-Wert
+		{"healthy", true},
+		{"starting", false},
+		{"unhealthy", false},
+	}
+	for _, tc := range cases {
+		if got := HealthOK(tc.status); got != tc.want {
+			t.Errorf("HealthOK(%q) = %v, erwartet %v", tc.status, got, tc.want)
+		}
+	}
+}

@@ -57,6 +57,12 @@ func classify(labels map[string]string, labelPrefix string) (enabled, hasConfig 
 	return false, false
 }
 
+// HealthOK meldet, ob ein Backup laut Health-Status starten darf.
+// Kein Healthcheck definiert ("" bzw. "none") gilt als OK.
+func HealthOK(status string) bool {
+	return status == "" || status == container.NoHealthcheck || status == container.Healthy
+}
+
 // Client ist ein dünner Wrapper um den Docker-SDK-Client.
 type Client struct {
 	api *client.Client
@@ -148,6 +154,19 @@ func containerName(names []string, id string) string {
 		return id[:12]
 	}
 	return id
+}
+
+// Health liefert den aktuellen Healthcheck-Status des Containers
+// ("starting", "healthy", "unhealthy"). "" bedeutet: kein Healthcheck definiert.
+func (c *Client) Health(ctx context.Context, containerID string) (string, error) {
+	inspect, err := c.api.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return "", fmt.Errorf("container inspizieren: %w", err)
+	}
+	if inspect.State == nil || inspect.State.Health == nil {
+		return "", nil
+	}
+	return inspect.State.Health.Status, nil
 }
 
 // Exec führt command via "sh -c" im Container aus. stdout des Kommandos wird

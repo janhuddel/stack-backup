@@ -67,6 +67,12 @@ siehe [README.md](README.md) (`docker run` braucht absolute Host-Pfade).
   `/proc/self/cgroup`, zuletzt aus dem Hostname (= Kurz-ID, sofern nicht überschrieben).
   Verglichen wird nur gegen Container-IDs, nie gegen Namen: ein gesetzter `hostname:`
   deaktiviert höchstens den Ausschluss, er trifft nie den falschen Container.
+- **Health-Gate (`require_healthy`, Default true):** Container mit Healthcheck werden
+  nur gesichert, wenn sie beim Start des Backup-Versuchs `healthy` melden — sonst
+  WARN und übersprungen (zählt weder als ok noch als failed). Kein Healthcheck
+  definiert ⇒ gilt als OK. Der Status wird frisch per Inspect geprüft, aber immer
+  **vor** dem eigenen Stop — nie danach re-checken, ein von uns gestoppter Container
+  ist absichtlich nicht healthy.
 - **Container ohne Backup-Label** werden gesammelt als eine INFO-Zeile geloggt;
   Container mit `stack-backup.*`-Labels ohne `enable=true` einzeln als WARN.
 - **Cleanup per `defer`:** Container-Neustart (`stop=true`) und `post-command`

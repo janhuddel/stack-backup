@@ -93,8 +93,24 @@ func (r *Runner) run(ctx context.Context) error {
 		clients[name] = rc
 	}
 
-	ok, failed := 0, 0
+	ok, failed, unhealthy := 0, 0, 0
 	for _, p := range plans {
+		// Health-Gate: unhealthy Container liefern potenziell inkonsistente
+		// Backups — überspringen statt sichern. Der Status wird frisch geprüft,
+		// weil seit der Discovery bereits andere Backups gelaufen sein können.
+		if *r.Cfg.RequireHealthy {
+			status, err := r.Docker.Health(ctx, p.ContainerID)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("container %s: health-status: %w", p.ContainerName, err))
+				failed++
+				continue
+			}
+			if !docker.HealthOK(status) {
+				r.Log.Warn("Container nicht healthy — Backup übersprungen", "container", p.ContainerName, "health", status)
+				unhealthy++
+				continue
+			}
+		}
 		if err := r.runContainer(ctx, p, clients); err != nil {
 			errs = append(errs, fmt.Errorf("container %s: %w", p.ContainerName, err))
 			failed++
@@ -114,7 +130,7 @@ func (r *Runner) run(ctx context.Context) error {
 		}
 	}
 
-	r.Log.Info("Backup-Iteration beendet", "container_ok", ok, "container_failed", failed)
+	r.Log.Info("Backup-Iteration beendet", "container_ok", ok, "container_failed", failed, "container_unhealthy", unhealthy)
 	return errors.Join(errs...)
 }
 

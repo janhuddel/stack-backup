@@ -46,6 +46,9 @@ func TestLoadValid(t *testing.T) {
 	if cfg.StopTimeout != 30 {
 		t.Errorf("Default-StopTimeout erwartet, bekommen %d", cfg.StopTimeout)
 	}
+	if cfg.RequireHealthy == nil || !*cfg.RequireHealthy {
+		t.Error("Default require_healthy=true erwartet")
+	}
 	if !reflect.DeepEqual(cfg.TargetNames(), []string{"c2", "local"}) {
 		t.Errorf("TargetNames falsch: %v", cfg.TargetNames())
 	}
@@ -58,6 +61,22 @@ func TestLoadValid(t *testing.T) {
 	}
 	if !reflect.DeepEqual(env, want) {
 		t.Errorf("ResticEnv falsch:\n got %v\nwant %v", env, want)
+	}
+}
+
+func TestRequireHealthyExplicitFalse(t *testing.T) {
+	cfg := `
+schedule: "0 3 * * *"
+require_healthy: false
+targets:
+  local: {repository: /r, password: x}
+`
+	loaded, err := Load(writeConfig(t, cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RequireHealthy == nil || *loaded.RequireHealthy {
+		t.Error("explizites require_healthy=false darf nicht vom Default überschrieben werden")
 	}
 }
 
