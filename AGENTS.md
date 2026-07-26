@@ -5,9 +5,17 @@ Läuft als Container neben dem Stack, liest per Cron alle laufenden Container ü
 den Docker-Socket und sichert, was per `stack-backup.*`-Label konfiguriert ist.
 Fachliche Details und Label-Referenz: [README.md](README.md).
 
+## Skills
+
+- `.claude/skills/backup-config` — Verfahren für Label-Vorschläge zu einem Dienst
+  (Entscheidungsbaum, Rezept-Katalog nach Persistenz-Klasse, Prüfliste). Neue Rezepte
+  gehören dorthin; die README-Tabelle bleibt die Kurzfassung.
+
 ## Sprache & Stil
 
 - Kommentare, Log-Meldungen, Doku und Commit-Messages sind **deutsch** — dabei bleiben.
+- Bezeichner dagegen **englisch**: Variablen, Funktionen, Felder, Label-Namen. Gilt auch
+  für Shell-Skripte in Vorschlägen (`archive=…`, nicht `archiv=…`).
 - Logging über `log/slog` (strukturiert, stdout). Fehler werden pro Job gesammelt
   (`errors.Join`), ein fehlgeschlagener Job bricht den Lauf nie ab.
 
@@ -20,11 +28,9 @@ go test ./...                 # Unit-Tests (plan, config, docker/classify)
 docker build -t stack-backup .   # Multi-Stage: golang:1.25-alpine → alpine + restic
 ```
 
-Manueller E2E-Test: `test/` enthält einen Example-Stack
-(`test/example-stack/docker-compose.yaml`, minio + uptime-kuma mit Labels)
-und `test/run-once.sh` (startet `stack-backup:latest --once` mit lokalem
-restic-Repository unter `test/backups`). Erst `docker compose up -d` im
-example-stack, dann das Skript.
+Manuell gegen einen echten Stack: Image bauen, dann mit `--once` und einem
+lokalen `local`-Target (Filesystem-Repository) laufen lassen — Aufrufbeispiele
+siehe [README.md](README.md) (`docker run` braucht absolute Host-Pfade).
 
 ## Architektur (Paket → Verantwortung)
 
@@ -76,6 +82,6 @@ example-stack, dann das Skript.
   benannte Volumes liegen in der VM und sind über einen
   `/var/lib/docker/volumes`-Mount **nicht** erreichbar.
 - `docker run -v` braucht absolute Host-Pfade (anders als Compose) — betrifft
-  Test-Skripte und README-Beispiele.
+  die README-Beispiele.
 - restic behält den ältesten Tages-Snapshot, solange weniger Tage Historie
   existieren als `keep_daily` — sieht nach einem Retention-Bug aus, ist keiner.
