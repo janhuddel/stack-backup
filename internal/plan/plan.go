@@ -98,8 +98,20 @@ func buildOne(ct docker.Container, prefix string, allTargets []string) (Containe
 		p.Targets = slices.Clone(allTargets)
 	}
 
-	// Exec-Backup.
-	if cmd := label("exec.command"); cmd != "" {
+	// Exec-Backup: exec.command ist eine Kommandozeile, exec.script der Pfad
+	// eines Skripts im Container. Das Skript wird via "sh <pfad>" gestartet —
+	// so braucht der Labelwert kein Quoting und das Skript kein Execute-Bit.
+	cmd := label("exec.command")
+	if script := label("exec.script"); script != "" {
+		if cmd != "" {
+			warnings = append(warnings, fmt.Sprintf("container %s: exec.command und exec.script gesetzt — exec.script gewinnt", ct.Name))
+		}
+		if strings.ContainsAny(script, " \t\"'`;&|$(){}") {
+			warnings = append(warnings, fmt.Sprintf("container %s: exec.script %q enthält Shell-Sonderzeichen — erwartet wird ein reiner Pfad, für Kommandozeilen exec.command verwenden", ct.Name, script))
+		}
+		cmd = "sh " + script
+	}
+	if cmd != "" {
 		filename := label("exec.filename")
 		if filename == "" {
 			filename = ct.Name + ".dump"
@@ -113,7 +125,7 @@ func buildOne(ct docker.Container, prefix string, allTargets []string) (Containe
 	}
 
 	if !p.HasWork() {
-		warnings = append(warnings, fmt.Sprintf("container %s: enable=true, aber weder exec.command noch volumes gesetzt", ct.Name))
+		warnings = append(warnings, fmt.Sprintf("container %s: enable=true, aber weder exec.command/exec.script noch volumes gesetzt", ct.Name))
 	}
 	return p, warnings
 }

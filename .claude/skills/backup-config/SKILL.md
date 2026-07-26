@@ -61,7 +61,7 @@ Labels in compose-**Listenform** (`- key=value`), so wie die Stacks es schreiben
       - stack-backup.volumes=/app/data
       - stack-backup.stop=true
       - stack-backup.volume./app/data.exclude=cache/**,*.tmp
-      - 'stack-backup.exec.command=sh /opt/backup-hooks/dump.sh'
+      - stack-backup.exec.script=/opt/backup-hooks/dump.sh
 ```
 
 Zwei Regeln dazu:
@@ -108,13 +108,22 @@ Festes Format:
 - **Nur stdout landet im Snapshot.** Fortschritts-/Statusausgabe von Tools mit `1>&2`
   umleiten, Exit-Code über `; rc=$?; …; exit $rc` erhalten — sonst gilt ein
   fehlgeschlagener Dump als erfolgreiches Backup.
+- **Ab ca. drei verketteten Anweisungen: Wrapper-Skript statt Label.** Skript ins
+  Stack-Repo, read-only in den Container mounten
+  (`./scripts/<dienst>-backup.sh:/opt/backup-hooks/<dienst>-backup.sh:ro`) und per
+  `stack-backup.exec.script=<pfad>` referenzieren — kein Quoting, kein `$$`-Escaping,
+  kein Execute-Bit nötig (Aufruf via `sh <pfad>`). Im Skript: `set -eu` plus
+  `trap … EXIT` statt manueller `rc=$?`-Buchhaltung; Kommentare deutsch, Bezeichner
+  englisch. Vorsicht bei `volumes: all` am selben Container: der Skript-Mount ist dann
+  ein Mount-Job und scheitert am Quellpfad-Check → Datenpfade explizit auflisten.
+  Muster-Skript: README, Abschnitt `### ioBroker`.
 - **`$` in compose-Labels verdoppeln.** Compose interpoliert `$VAR` und `${VAR}` beim
   Einlesen der Datei — aus `exit $rc` wird sonst `exit `, aus `$MYSQL_PWD` ein leerer
   String. In der compose-Datei also `$$rc`, `$$MARIADB_ROOT_PASSWORD`, `$$(ls -t …)`
   schreiben; im Container kommt daraus ein einfaches `$`. Wer die Labels per
   `docker run --label` setzt, schreibt ein einfaches `$`. Der ausgegebene Block ist
   compose — also verdoppeln und den Grund dazusagen.
-- **`enable: "true"` allein tut nichts.** Ohne `exec.command` oder `volumes` gibt es nur
-  eine Warnung im Log.
+- **`enable=true` allein tut nichts.** Ohne `exec.command`, `exec.script` oder `volumes`
+  gibt es nur eine Warnung im Log.
 - **Excludes sind relativ zum Mount-Root** und dürfen nie das WAL/Journal einer Datenbank
   treffen, die kalt mitgesichert wird.

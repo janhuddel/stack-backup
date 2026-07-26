@@ -168,19 +168,30 @@ Targets läuft der Dump mehrfach; bei großen DBs `stack-backup.targets` einschr
 **Erkennung:** Die App bringt ein Kommando mit, das mehr leistet als eine Dateikopie
 (konsistenter Export inkl. Metadaten, versionsunabhängiges Format).
 
-**Generisches Idiom** — Tool schreibt in eine Datei, wir brauchen stdout (hier in
-compose-Schreibweise, `$$` = escaptes `$`):
+**Bevorzugte Form: Wrapper-Skript per `exec.script`.** Kommandos dieser Klasse sind
+praktisch immer mehrgliedrig (Export → Aufräumen → Exit-Code) — das gehört als Skript
+ins Stack-Repo, nicht ins Label (siehe Harte Regeln in [SKILL.md](../SKILL.md)):
 ```yaml
-      - 'stack-backup.exec.command=rm -rf /tmp/bak && <tool> backup /tmp/bak 1>&2 && tar -C /tmp/bak -cf - . ; rc=$$?; rm -rf /tmp/bak; exit $$rc'
+    volumes:
+      - ./scripts/<dienst>-backup.sh:/opt/backup-hooks/<dienst>-backup.sh:ro
+    labels:
+      - stack-backup.enable=true
+      - stack-backup.exec.script=/opt/backup-hooks/<dienst>-backup.sh
+      - stack-backup.exec.filename=<dienst>-backup.tar.gz
 ```
-Drei Details, alle nicht optional: `1>&2` hält die Fortschrittsausgabe aus dem Tar-Stream,
-das aufräumende `rm` läuft auch im Fehlerfall, `exit $rc` verhindert, dass ein
-fehlgeschlagener Dump als erfolgreiches Backup durchgeht.
+Drei Details im Skript, alle nicht optional: `1>&2` (bzw. `>&2`) hält die
+Fortschrittsausgabe aus dem Datenstrom, das aufräumende `rm` läuft per `trap … EXIT`
+auch im Fehlerfall, und `set -eu` verhindert, dass ein fehlgeschlagener Dump als
+erfolgreiches Backup durchgeht. Meldet das Tool den erzeugten Dateipfad auf stdout
+(ioBroker: `Backup created: …`), diesen **parsen** statt per `ls -t` das neueste
+Archiv zu raten — teilt sich das Verzeichnis mit anderen Schreibern (Backitup,
+manuelle Läufe), erwischt `ls -t` sonst deren Datei. Komplettes Muster-Skript:
+[README.md](../../../../README.md), Abschnitt `### ioBroker`.
 
-**Variante „neueste Datei aus einem Backup-Verzeichnis"** (ioBroker):
+**Einzeiler dürfen im Label bleiben** (dann `$$` für escaptes `$`, Eintrag mit
+Leerzeichen als Ganzes quoten):
 ```yaml
-      - 'stack-backup.exec.command=iobroker backup 1>&2 && cat "$$(ls -t /opt/iobroker/backups/*.tar.gz | head -1)"'
-      - stack-backup.exec.filename=iobroker-backup.tar.gz
+      - 'stack-backup.exec.command=<tool> export --stdout'
 ```
 
 **InfluxDB 2.x** ist der Lehrfall dafür, wann man das Tool *nicht* nimmt: `influx backup`

@@ -72,6 +72,7 @@ Retention-Felder: `keep_last`, `keep_hourly`, `keep_daily`, `keep_weekly`,
 |---|---|
 | `stack-backup.enable=true` | Opt-in — ohne dieses Label passiert nichts. Ignorierte Container werden pro Lauf gesammelt geloggt; trägt ein Container zwar `stack-backup.*`-Labels, aber kein `enable=true`, gibt es eine Warnung (vermutlich vergessen) |
 | `stack-backup.exec.command=pg_dump -U postgres mydb` | Kommando im laufenden Container; stdout → Snapshot |
+| `stack-backup.exec.script=/opt/backup-hooks/dump.sh` | Alternative zu `exec.command`: Pfad eines Skripts **im Container** (typisch per Bind-Mount aus dem Stack-Repo), gestartet via `sh <pfad>` — kein Quoting im Label, kein Execute-Bit nötig. Sind beide gesetzt, gewinnt `exec.script` (mit Warnung) |
 | `stack-backup.exec.filename=mydb.sql` | Dateiname im Snapshot (Default: `<containername>.dump`) |
 | `stack-backup.volumes=all` bzw. `/data,/config` | Welche Mounts gesichert werden. Identifikation über den Container-Pfad; bei benannten Volumes auch der Volume-Name |
 | `stack-backup.volume./data.exclude=cache/**,tmp/**` | Excludes pro Mount (Patterns relativ zum Mount-Root) |
@@ -79,10 +80,31 @@ Retention-Felder: `keep_last`, `keep_hourly`, `keep_daily`, `keep_weekly`,
 | `stack-backup.pre-command=…` / `stack-backup.post-command=…` | Hooks vor/nach den Mount-Backups per `docker exec` — Konsistenz ohne Stop |
 | `stack-backup.targets=local,c2` | Nur in bestimmte Targets sichern (Default: alle) |
 
-Alle Kommandos laufen via `sh -c` — Pipes und Verkettungen funktionieren.
-**Nur stdout fließt in den Snapshot**; stderr landet in den Logs. Tools, die
-eine Datei erzeugen statt nach stdout zu schreiben: eigene Ausgabe nach stderr
-umleiten, dann die Datei `cat`en (Beispiele unten).
+#### Vertrag für Exec-Kommandos und -Skripte
+
+Gilt für `exec.command` und `exec.script` gleichermaßen:
+
+- **stdout ist der Snapshot-Inhalt** — jedes Byte auf stdout landet in der
+  Backup-Datei (`exec.filename`). Fortschritts-, Status- und Fehlermeldungen
+  deshalb nach **stderr** umleiten (`>&2`); stderr erscheint zeilenweise im
+  Backup-Log. Tools, die eine Datei erzeugen statt nach stdout zu schreiben:
+  eigene Ausgabe nach stderr, dann die Datei `cat`en (Beispiele unten).
+- **Exit-Code ≠ 0 ⇒ Job fehlgeschlagen** — auch wenn restic den (Teil-)Stream
+  sauber gespeichert hat. Umgekehrt gilt Exit-Code 0 als Erfolg, selbst wenn
+  stdout leer war: Skripte mit `set -eu` schreiben (bzw. Aufräumarbeiten mit
+  `rc=$?; …; exit $rc` absichern), damit ein gescheiterter Dump nie als
+  erfolgreiches Backup durchgeht.
+- Ausführung via `sh -c` (Pipes und Verkettungen funktionieren) als der im
+  Image definierte **USER**, mit dem vollen **Env des Containers** (env_file-
+  Variablen sind verfügbar). Kein TTY, **stdin ist leer** — interaktive
+  Rückfragen lesen EOF.
+- Das Kommando läuft **einmal pro Target** — teure Dumps ggf. per
+  `stack-backup.targets` einschränken.
+
+Ab etwa drei verketteten Anweisungen wird das Label unleserlich und das
+`$$`-Escaping fehleranfällig — dann das Kommando als Skript ins Stack-Repo
+legen, read-only in den Container mounten und per `exec.script` referenzieren
+(Beispiel unten bei ioBroker).
 
 **Vorsicht mit `volumes=all` bei gemounteten Config-Dateien.** `all` nimmt
 *jeden* Bind-Mount und jedes benannte Volume des Containers — auch einzelne
@@ -107,7 +129,7 @@ Compose-Repo gehört ohnehin ins Git, nicht ins restic-Repository.
 | SQLite-Apps (uptime-kuma, grafana, open-webui, n8n, node-red) | `volumes=all` + `stop=true` |
 | Minecraft (itzg) | `volumes=all` + `pre-command=rcon-cli save-off && rcon-cli save-all` + `post-command=rcon-cli save-on` |
 | PostgreSQL | `exec.command=pg_dump -U postgres mydb` + `exec.filename=mydb.sql` |
-| ioBroker | `exec.command=iobroker backup 1>&2 && cat "$(ls -t /opt/iobroker/backups/*.tar.gz \| head -1)"` + `exec.filename=iobroker-backup.tar.gz` |
+| ioBroker | `exec.script=/opt/backup-hooks/iobroker-backup.sh` + `exec.filename=iobroker-backup.tar.gz` (Skript siehe unten) |
 | InfluxDB 2.x | `volumes=/var/lib/influxdb2` + `stop=true` (siehe unten) |
 | MinIO (SNSD) | `volumes=all` + `volume./data.exclude=.minio.sys/tmp/**,.minio.sys/multipart/**` |
 | Vaultwarden (DB extern) | `volumes=all` (Attachments/Keys; DB wird auf dem DB-Server gesichert) |
@@ -115,6 +137,46 @@ Compose-Repo gehört ohnehin ins Git, nicht ins restic-Repository.
 
 Hinweis: Bei mehreren Targets wird ein Exec-Kommando pro Target erneut
 ausgeführt (bewusster Trade-off: kein Zwischenspeichern auf Platte).
+
+### ioBroker (Muster: Wrapper-Skript per `exec.script`)
+
+`iobroker backup` erzeugt einen konsistenten Export ohne Downtime, schreibt ihn
+aber als Datei und meldet den Pfad auf stdout — genau der Fall, in dem ein
+Wrapper-Skript besser lesbar ist als ein verkettetes Label. Das Skript liegt im
+Stack-Repo und wird read-only in den Container gemountet:
+
+```yaml
+    volumes:
+      - ./scripts/iobroker-backup.sh:/opt/backup-hooks/iobroker-backup.sh:ro
+    labels:
+      - stack-backup.enable=true
+      - stack-backup.exec.script=/opt/backup-hooks/iobroker-backup.sh
+      - stack-backup.exec.filename=iobroker-backup.tar.gz
+```
+
+`scripts/iobroker-backup.sh`:
+
+```sh
+#!/bin/sh
+# Backup-Kommando für stack-backup (Label: stack-backup.exec.script).
+# Nur stdout landet im Snapshot; Exit-Code != 0 lässt den Job fehlschlagen.
+set -eu
+
+# CLI-Ausgabe einsammeln und geschlossen ins Backup-Log (stderr) schieben.
+output=$(iobroker backup)
+echo "$output" >&2
+
+# Archivpfad aus "Backup created: …" ziehen; ohne Treffer endet grep mit 1.
+archive=$(echo "$output" | grep -o "/opt/iobroker/backups/.*\.tar\.gz")
+
+# Archiv nach dem Streamen wegräumen — die Historie hält restic.
+trap 'rm -f "$archive"' EXIT
+
+cat "$archive"
+```
+
+Skript-Änderungen wirken sofort beim nächsten Lauf; nur Label-Änderungen
+brauchen eine Neuerzeugung des Containers (`docker compose up -d`).
 
 ### InfluxDB 2.x
 

@@ -24,6 +24,13 @@ Jeden Punkt beantworten; ein „nein" heißt Vorschlag korrigieren, nicht relati
 **Exec**
 - [ ] Existiert das Kommando im Image? (`pg_dump` fehlt in App-Images, `mariadb-dump` heißt
       in älteren Images `mysqldump`, `rcon-cli` gibt es nur in den itzg-Images.)
+- [ ] Mehr als ~drei verkettete Anweisungen? Dann Wrapper-Skript + `exec.script` statt
+      `exec.command` vorschlagen (Harte Regeln in [SKILL.md](../SKILL.md)).
+- [ ] Bei `exec.script`: steht der zugehörige ro-Bind-Mount des Skripts mit im Vorschlag,
+      ist der Labelwert der **Container**-Pfad, und ist er ein reiner Pfad ohne
+      Leerzeichen/Shell-Zeichen? (Sonst warnt das Tool und der Aufruf `sh <pfad>`
+      zerfällt.) Achtung bei `volumes=all` am selben Container: der Skript-Mount wird
+      dann zum Mount-Job und scheitert am Quellpfad-Check.
 - [ ] Fortschritts-/Statusausgabe mit `1>&2` umgeleitet, damit nur Nutzdaten in den Snapshot
       fließen?
 - [ ] Exit-Code erhalten (`; rc=$?; …; exit $rc`), wenn nach dem Dump noch aufgeräumt wird?
@@ -36,8 +43,8 @@ Jeden Punkt beantworten; ein „nein" heißt Vorschlag korrigieren, nicht relati
 
 **Allgemein**
 - [ ] Keine Passwörter, Tokens oder Schlüssel im Label (Labels landen im Git)?
-- [ ] Ergibt der Vorschlag mindestens einen Job — `exec.command` **oder** `volumes`?
-      `enable: "true"` allein erzeugt nur eine Warnung.
+- [ ] Ergibt der Vorschlag mindestens einen Job — `exec.command`, `exec.script` **oder**
+      `volumes`? `enable=true` allein erzeugt nur eine Warnung.
 - [ ] Labels in Listenform (`- key=value`) und **kein** Wert einzeln gequotet? `stop="true"`
       liefert den Wert `"true"` inklusive Anführungszeichen — der Vergleich auf `true`
       schlägt fehl, der Container wird stillschweigend nicht gestoppt. Werte mit
@@ -85,7 +92,10 @@ ist ein `$` im Label nicht verdoppelt — das Kommando kommt verstümmelt im Con
 | Meldung | Ursache | Fix |
 |---|---|---|
 | `mount <pfad>: Quellpfad <host-pfad> nicht im Backup-Container verfügbar (Volume-Root mounten!)` | Der Host-Quellpfad des Mounts ist im Backup-Container nicht sichtbar — meist eine gemountete Config-Datei aus dem Compose-Verzeichnis bei `volumes: all`, oder ein Volume-Root, der dem Backup-Service fehlt | Datenpfade explizit auflisten statt `all`, oder den Volume-Root read-only und pfadidentisch in den Backup-Service mounten |
-| `container <name>: enable=true, aber weder exec.command noch volumes gesetzt` | Opt-in gesetzt, aber kein Job definiert | `volumes` oder `exec.command` ergänzen |
+| `container <name>: enable=true, aber weder exec.command/exec.script noch volumes gesetzt` | Opt-in gesetzt, aber kein Job definiert | `volumes`, `exec.command` oder `exec.script` ergänzen |
+| `container <name>: exec.command und exec.script gesetzt — exec.script gewinnt` | Beide Exec-Labels gesetzt | eines der beiden entfernen (gemeint ist fast immer `exec.script`) |
+| `container <name>: exec.script "…" enthält Shell-Sonderzeichen …` | Wert ist keine reine Pfadangabe — Kommandozeile im falschen Label | Kommandozeile nach `exec.command` verschieben oder ins Skript verlagern |
+| `sh: … <pfad>: not found` bzw. `cannot open <pfad>` im exec-stderr | Skript-Mount fehlt oder Pfad falsch | ro-Bind-Mount des Skripts prüfen (`docker exec <container> ls -l <pfad>`) |
 | `container <name>: kein Mount passt zu "<sel>"` | Selektor trifft keinen Mount — Tippfehler, Host- statt Container-Pfad, oder der Mount existiert nicht mehr | Selektor gegen `docker inspect -f '{{json .Mounts}}'` prüfen |
 | `container <name>: unbekanntes Target "<name>" ignoriert` | Target-Name steht nicht in der Config | Namen gegen `targets:` in der `config.yml` abgleichen |
 | `container <name>: kein gültiges Target übrig, Container übersprungen` | Alle Namen im `targets`-Label waren unbekannt | wie oben |

@@ -53,6 +53,59 @@ func TestExecFilenameDefault(t *testing.T) {
 	}
 }
 
+func TestExecScript(t *testing.T) {
+	ct := docker.Container{
+		Name: "iobroker",
+		Labels: labels(
+			"exec.script", "/opt/backup-hooks/iobroker-backup.sh",
+			"exec.filename", "iobroker-backup.tar.gz",
+		),
+	}
+	plans, warnings := Build([]docker.Container{ct}, prefix, allTargets)
+	if len(warnings) != 0 {
+		t.Fatalf("unerwartete Warnungen: %v", warnings)
+	}
+	p := plans[0]
+	if p.Exec == nil || p.Exec.Command != "sh /opt/backup-hooks/iobroker-backup.sh" {
+		t.Errorf("erwartet Aufruf via sh, bekommen %+v", p.Exec)
+	}
+	if p.Exec.Filename != "iobroker-backup.tar.gz" {
+		t.Errorf("filename falsch: %q", p.Exec.Filename)
+	}
+}
+
+func TestExecScriptWinsOverCommand(t *testing.T) {
+	ct := docker.Container{
+		Name: "app",
+		Labels: labels(
+			"exec.command", "echo alt",
+			"exec.script", "/opt/backup-hooks/dump.sh",
+		),
+	}
+	plans, warnings := Build([]docker.Container{ct}, prefix, allTargets)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exec.script gewinnt") {
+		t.Fatalf("erwartet Warnung zum Doppel-Label, bekommen %v", warnings)
+	}
+	if got := plans[0].Exec.Command; got != "sh /opt/backup-hooks/dump.sh" {
+		t.Errorf("erwartet exec.script als Gewinner, bekommen %q", got)
+	}
+}
+
+func TestExecScriptWithShellCharsWarns(t *testing.T) {
+	ct := docker.Container{
+		Name:   "app",
+		Labels: labels("exec.script", "/opt/dump.sh && rm -rf /"),
+	}
+	plans, warnings := Build([]docker.Container{ct}, prefix, allTargets)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "Shell-Sonderzeichen") {
+		t.Fatalf("erwartet Warnung zu Sonderzeichen, bekommen %v", warnings)
+	}
+	// Der Job läuft trotzdem — der Fehler wird spätestens im Exec-Log sichtbar.
+	if len(plans) != 1 || plans[0].Exec == nil {
+		t.Fatalf("erwartet 1 Plan mit Exec-Job, bekommen %+v", plans)
+	}
+}
+
 func TestVolumesAllWithBindAndNamed(t *testing.T) {
 	ct := docker.Container{
 		Name:   "vaultwarden",
