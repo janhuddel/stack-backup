@@ -81,6 +81,15 @@ Alle Kommandos laufen via `sh -c` — Pipes und Verkettungen funktionieren.
 eine Datei erzeugen statt nach stdout zu schreiben: eigene Ausgabe nach stderr
 umleiten, dann die Datei `cat`en (Beispiele unten).
 
+**Vorsicht mit `volumes=all` bei gemounteten Config-Dateien.** `all` nimmt
+*jeden* Bind-Mount und jedes benannte Volume des Containers — auch einzelne
+Dateien aus dem Compose-Verzeichnis, wie sie oft für Konfiguration gemountet
+werden (`./config/app/config.yml:/etc/app/config.yml`). Deren Quellpfad liegt
+nicht unter den read-only gemounteten Volume-Roots, der Quellpfad-Check schlägt
+fehl und der Container wird bei jedem Lauf als fehlgeschlagen gezählt. In dem
+Fall die Datenpfade explizit auflisten (`volumes=/var/lib/app`) — Config aus dem
+Compose-Repo gehört ohnehin ins Git, nicht ins restic-Repository.
+
 ### Volume-Labels (nur benannte Volumes)
 
 | Label | Bedeutung |
@@ -96,12 +105,63 @@ umleiten, dann die Datei `cat`en (Beispiele unten).
 | Minecraft (itzg) | `volumes=all` + `pre-command=rcon-cli save-off && rcon-cli save-all` + `post-command=rcon-cli save-on` |
 | PostgreSQL | `exec.command=pg_dump -U postgres mydb` + `exec.filename=mydb.sql` |
 | ioBroker | `exec.command=iobroker backup 1>&2 && cat "$(ls -t /opt/iobroker/backups/*.tar.gz \| head -1)"` + `exec.filename=iobroker-backup.tar.gz` |
-| InfluxDB 2.x | `exec.command=influx backup /tmp/b 1>&2 && tar -C /tmp/b -cf - .` + `exec.filename=influxdb.tar` — oder `volumes=all` + `stop=true` |
+| InfluxDB 2.x | `volumes=/var/lib/influxdb2` + `stop=true` (siehe unten) |
+| MinIO (SNSD) | `volumes=all` + `volume./data.exclude=.minio.sys/tmp/**,.minio.sys/multipart/**` |
 | Vaultwarden (DB extern) | `volumes=all` (Attachments/Keys; DB wird auf dem DB-Server gesichert) |
 | Stateless (traefik, dozzle, …) | kein Label |
 
 Hinweis: Bei mehreren Targets wird ein Exec-Kommando pro Target erneut
 ausgeführt (bewusster Trade-off: kein Zwischenspeichern auf Platte).
+
+### InfluxDB 2.x
+
+`/var/lib/influxdb2` enthält `influxd.bolt` (Buckets, Orgs, Tokens),
+`influxd.sqlite` (Tasks, Notebooks, Dashboards) und `engine/` mit TSM-Dateien
+plus WAL. Bolt und SQLite sind echte Datenbank-Dateien — ein Kopieren im
+laufenden Betrieb ist nicht sicher, beim geordneten Stop schließt influxd beide
+sauber. Das Verzeichnis ist danach vollständig restore-fähig.
+
+Gegen `influx backup` spricht dreierlei: das Tool schreibt erst komplett in ein
+Temp-Verzeichnis im Container (verdoppelt kurzzeitig den Platzbedarf auf der
+Host-Disk), es braucht einen Operator-Token im Container-Env, und es erzeugt bei
+jedem Lauf ein frisches Tar. TSM-Dateien sind dagegen nach dem Schreiben
+unveränderlich — beim Mount-Backup überspringt restic sie, sobald es einen
+Parent-Snapshot findet, und liest nur die neuen Shards ein. Das setzt einen
+stabilen Hostnamen des Backup-Containers voraus (`restic backup` sucht den
+Parent per Default über `host,paths`); ohne den wird bei jedem Lauf alles neu
+eingelesen — dedupliziert zwar, aber langsam.
+
+`engine/wal/**` **nicht** excluden: dort stehen die noch nicht nach TSM
+kompaktierten Schreibvorgänge, die beim Start replayt werden.
+
+Wenn die Downtime nicht vertretbar ist, doch per Exec — `INFLUX_TOKEN` über
+`env_file` setzen, nicht als Label (landet sonst im Git):
+
+```
+stack-backup.exec.command=rm -rf /tmp/ibak && influx backup /tmp/ibak 1>&2 && tar -C /tmp/ibak -cf - . ; rc=$?; rm -rf /tmp/ibak; exit $rc
+stack-backup.exec.filename=influxdb.tar
+```
+
+Das `1>&2` ist Pflicht, sonst mischt sich die Fortschrittsausgabe in den
+Tar-Stream; `exit $rc` erhält den Exit-Code, damit ein fehlgeschlagener Dump
+nicht als erfolgreiches Backup durchgeht.
+
+### MinIO
+
+Im SNSD-Modus (`server /data`) liegen Objekte als Verzeichnisse mit `xl.meta`
+und Part-Dateien direkt im Mount — das Dateisystem-Backup erfasst Objekte,
+Bucket-Metadaten, Policies und IAM in einem Rutsch. `.minio.sys/` gehört
+zwingend dazu (`format.json`, ohne die startet MinIO nicht; dazu `config/`,
+`buckets/` und die IAM-Daten). Ausgeschlossen werden nur die transienten
+Bereiche: `tmp/` (Staging für laufende Schreibvorgänge und asynchrone
+Löschungen) und `multipart/` (angefangene Uploads).
+
+Ein Stop ist meist verzichtbar: MinIO schreibt nach `.minio.sys/tmp/` und
+verschiebt fertig per Rename, halbfertige Objekte tauchen in den
+Bucket-Verzeichnissen also nicht auf. Restrisiko ist ein `xl.meta`, das genau
+während des Reads in-place aktualisiert wird — betrifft ein einzelnes Objekt.
+`stop=true` schließt das aus, legt aber alle Dienste still, die MinIO als
+S3-Backend nutzen.
 
 ## Betrieb
 
