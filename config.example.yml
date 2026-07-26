@@ -1,0 +1,31 @@
+# Konfiguration für stack-backup.
+# Nach /etc/stack-backup/config.yml in den Backup-Container mounten.
+
+# Globaler Zeitplan (Standard-Cron, 5 Felder): täglich um 03:00.
+schedule: "0 3 * * *"
+
+# Prefix der Container-/Volume-Labels (Default: stack-backup).
+# label_prefix: stack-backup
+
+# Timeout in Sekunden für "docker stop" bei stop=true (Default: 30).
+# stop_timeout_seconds: 30
+
+targets:
+  # Lokales Repository (Verzeichnis wird in den Backup-Container gemountet),
+  # 30 Tage Historie.
+  local:
+    repository: /backups/local
+    password_file: /run/secrets/restic_local
+    retention:
+      keep_daily: 30
+
+  # Synology C2 Object Storage (S3-kompatibel), nur letzte Version.
+  c2:
+    repository: s3:https://eu-002.s3.synologyc2.net/mein-backup-bucket
+    password_file: /run/secrets/restic_c2
+    env:
+      # ${VAR} wird gegen das Env des Backup-Containers expandiert.
+      AWS_ACCESS_KEY_ID: ${C2_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${C2_SECRET_KEY}
+    retention:
+      keep_last: 1
