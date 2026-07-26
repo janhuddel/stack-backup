@@ -1,0 +1,15 @@
+# Nur das, was der Go-Build braucht, gehört in den Build-Context.
+# test/backups gehört zudem root (restic-Repo aus dem Container) —
+# ohne Ausschluss scheitert schon das Einlesen des Contexts.
+.git
+.gitignore
+.dockerignore
+test/
+backups/
+secrets/
+config.yml
+config.example.yml
+docker-compose.example.yml
+Dockerfile
+*.md
+.claude/
