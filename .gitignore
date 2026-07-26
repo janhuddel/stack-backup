@@ -1,3 +1,7 @@
+# Lokal gebaute Binaries
+/bin/
+/stack-backup
+
 /backups/
 /secrets/
 config.yml

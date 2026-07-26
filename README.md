@@ -109,7 +109,11 @@ ausgeführt (bewusster Trade-off: kein Zwischenspeichern auf Platte).
 # Daemon (Standard): wartet auf den Cron
 docker compose up -d backup
 
-# Manuell genau einen Lauf ausführen
+# Lauf im laufenden Daemon sofort antriggern (Logs in "docker logs",
+# über den internen Mutex gegen Cron-Läufe serialisiert)
+docker kill --signal=USR1 <backup-container>
+
+# Alternativ: einmaliger Lauf in einem eigenen Container
 docker compose run --rm backup --once
 
 # restic mit dem Env eines Targets aufrufen (Inspektion, Restore, …)
@@ -198,7 +202,7 @@ docker compose run --rm backup restic --target local -- \
 
 ```sh
 go test ./...
-go build ./cmd/stack-backup
+go build -o bin/stack-backup ./cmd/stack-backup
 docker build -t stack-backup .
 ```
 

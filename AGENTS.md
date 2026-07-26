@@ -14,7 +14,7 @@ Fachliche Details und Label-Referenz: [README.md](README.md).
 ## Build & Test
 
 ```sh
-go build ./cmd/stack-backup   # Binary
+go build -o bin/stack-backup ./cmd/stack-backup   # Binary nach bin/ (gitignored)
 go vet ./...
 go test ./...                 # Unit-Tests (plan, config, docker/classify)
 docker build -t stack-backup .   # Multi-Stage: golang:1.25-alpine → alpine + restic
@@ -29,8 +29,9 @@ example-stack, dann das Skript.
 ## Architektur (Paket → Verantwortung)
 
 - `cmd/stack-backup` — Flags (`--config`, `--once`), Cron-Daemon mit
-  Signal-Handling, Subcommand `restic --target NAME -- ARGS` (Passthrough mit
-  fertigem Target-Env für Inspektion/Restore).
+  Signal-Handling (SIGUSR1 = sofortige Iteration), Subcommand
+  `restic --target NAME -- ARGS` (Passthrough mit fertigem Target-Env für
+  Inspektion/Restore).
 - `internal/config` — YAML-Config: Targets, Retention (→ `restic forget`-Flags),
   `${VAR}`-Expansion in `env`-Werten.
 - `internal/docker` — SDK-Wrapper: Discovery + Klassifizierung (`classify`),

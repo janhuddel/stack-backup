@@ -6,6 +6,8 @@
 //	stack-backup [--config path]              # Daemon: Cron-gesteuerte Läufe
 //	stack-backup [--config path] --once       # genau eine Iteration
 //	stack-backup restic --target NAME -- ARGS # restic-Passthrough (Restore etc.)
+//
+// Der Daemon startet bei SIGUSR1 sofort eine Iteration (manueller Trigger).
 package main
 
 import (
@@ -81,13 +83,27 @@ func run(log *slog.Logger) error {
 	if _, err := c.AddFunc(cfg.Schedule, func() { r.TryRun(ctx) }); err != nil {
 		return fmt.Errorf("ungültiger schedule %q: %w", cfg.Schedule, err)
 	}
+
+	// Manueller Trigger: SIGUSR1 stößt sofort eine Iteration an
+	// (z.B. "docker kill --signal=USR1 <container>"). Läuft im selben
+	// Prozess und ist damit über den Runner-Mutex gegen Cron-Läufe serialisiert.
+	trigger := make(chan os.Signal, 1)
+	signal.Notify(trigger, syscall.SIGUSR1)
+
 	log.Info("stack-backup gestartet", "schedule", cfg.Schedule, "targets", cfg.TargetNames())
 	c.Start()
 
-	<-ctx.Done()
-	log.Info("beende, warte auf laufende Jobs")
-	<-c.Stop().Done()
-	return nil
+	for {
+		select {
+		case <-trigger:
+			log.Info("SIGUSR1 empfangen, starte Backup-Iteration")
+			r.TryRun(ctx)
+		case <-ctx.Done():
+			log.Info("beende, warte auf laufende Jobs")
+			<-c.Stop().Done()
+			return nil
+		}
+	}
 }
 
 // runResticPassthrough führt "stack-backup restic --target NAME [--config path] -- ARGS"
